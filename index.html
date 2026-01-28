@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Intwari AI – Rwanda Heroes Intelligence</title>
+<style>
+:root{
+  --primary:#1A5276;
+  --secondary:#FFD700;
+  --accent:#28B463;
+  --bg:#f4f6f7;
+  --ai:#E8EAF6;
+  --user:#DCF8C6;
+}
+body{margin:0;font-family:Arial,sans-serif;background:var(--bg);}
+header{display:flex;align-items:center;gap:15px;background:var(--primary);color:white;padding:10px 20px;}
+header img{height:55px;border-radius:8px;}
+#app{max-width:900px;margin:auto;padding:15px;}
+#chat{background:white;border-radius:10px;height:400px;overflow-y:auto;padding:10px;display:flex;flex-direction:column-reverse;scroll-behavior:smooth;}
+.msg{max-width:75%;padding:10px;margin:5px;border-radius:15px;animation:fade .3s;}
+.user{align-self:flex-end;background:var(--user);}
+.ai{align-self:flex-start;background:var(--ai);}
+.highlight{background:var(--secondary);padding:2px 4px;border-radius:3px;}
+img.hero{width:120px;border-radius:8px;margin-top:5px;display:block;box-shadow:0 3px 8px rgba(0,0,0,0.3);}
+#controls{display:flex;gap:5px;margin-top:10px;flex-wrap:wrap;}
+#controls input{flex:1;padding:8px;border-radius:5px;border:1px solid #ccc;}
+button{background:var(--accent);border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-weight:bold;color:white;transition:0.3s;}
+button:hover{opacity:0.85;}
+.panel{background:white;margin-top:15px;padding:10px;border-radius:8px;display:none;}
+#logs{position:fixed;right:0;top:0;background:black;width:220px;height:100%;overflow-y:auto;color:white;font-size:12px;padding:5px;}
+#logs .user{color:var(--user);}
+#logs .ai{color:var(--ai);}
+#logs .admin{color:var(--secondary);}
+#quiz input{width:70%;padding:5px;}
+#admin img.preview{width:100px;margin-top:10px;border-radius:8px;}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@media(max-width:600px){#app{padding:10px;}#chat{height:300px;}}
+</style>
+</head>
+<body>
+
+<header>
+<img src="https://upload.wikimedia.org/wikipedia/commons/1/17/Flag_of_Rwanda.svg" alt="Logo">
+<h2>INTWARI AI</h2>
+</header>
+
+<div id="app">
+  <div id="controls">
+    <input id="q" placeholder="Ask about a Rwandan hero / Baza Intwari">
+    <button onclick="ask()">Ask</button>
+    <button onclick="toggleLang()">🌍</button>
+    <button onclick="showQuiz()">🧠 Quiz</button>
+    <button onclick="adminLogin()">🔐 Admin</button>
+  </div>
+
+  <div id="chat"></div>
+
+  <div id="quiz" class="panel">
+    <h3>Hero Quiz</h3>
+    <p id="quizQ"></p>
+    <input type="text" id="quizAns" placeholder="Your answer">
+    <button onclick="checkQ()">Check Answer</button>
+    <p>Score: <span id="quizScore">0</span></p>
+  </div>
+
+  <div id="admin" class="panel">
+    <h3>Admin Dashboard</h3>
+    <p>Administrator: <b>manzipros@gmail.com</b></p>
+    <input id="hen" placeholder="Hero name EN">
+    <input id="hrw" placeholder="Hero name RW">
+    <textarea id="sen" placeholder="Story EN"></textarea>
+    <textarea id="srw" placeholder="Story RW"></textarea>
+    <input type="file" id="img" onchange="previewImg(event)">
+    <img class="preview" id="imgPreview">
+    <button onclick="saveHero()">Save Hero</button>
+  </div>
+</div>
+
+<div id="logs"><b>Session Log</b><div id="logData"></div></div>
+
+<script>
+// INITIAL DATA
+let lang="en", admin=false, quizScore=0;
+let heroes=JSON.parse(localStorage.getItem("heroes"))||[
+ {name_en:"Paul Kagame",name_rw:"Paul Kagame",en:"President of Rwanda, key leader.",rw:"Perezida w'u Rwanda wagize uruhare mu kubaka igihugu.",img:"https://upload.wikimedia.org/wikipedia/commons/6/6e/Paul_Kagame_2023.jpg",values:["president","kagame","leader"]},
+ {name_en:"Agathe Uwilingiyimana",name_rw:"Agathe Uwilingiyimana",en:"Former Prime Minister and national heroine.",rw:"Minisitiri w’Intebe wahozeho, intwari y’igihugu.",img:"https://upload.wikimedia.org/wikipedia/commons/4/49/Agathe_Uwilingiyimana.jpg",values:["prime","minister","agathe"]}
+];
+let cache=JSON.parse(localStorage.getItem("cache"))||{};
+
+// LOG FUNCTION
+function log(t,type="user"){document.getElementById("logData").innerHTML+=`<div class="${type}">${t}</div>`;}
+
+// ADD MESSAGE
+function addMsg(txt,type){let d=document.createElement("div");d.className="msg "+type;d.innerHTML=txt;document.getElementById("chat").prepend(d);}
+
+// ASK AI
+async function ask(){
+ let q=document.getElementById("q").value.trim();
+ if(!q)return;
+ addMsg(q,"user"); log("User: "+q,"user"); document.getElementById("q").value="";
+ let found=heroes.find(h=>q.toLowerCase().includes(h.name_en.toLowerCase())||q.toLowerCase().includes(h.name_rw.toLowerCase())||h.values.some(v=>q.toLowerCase().includes(v)));
+ if(found){ let t=lang=="en"?found.en:found.rw;
+   addMsg(`<b>${found.name_en}</b><br>${t}<br><img class="hero" src="${found.img}">`,"ai"); log("AI replied with local hero","ai"); }
+ else{
+   let result=await silentSearch(q);
+   addMsg(result,"ai"); log("AI replied via Wikipedia","ai");
+ }
+}
+
+// SILENT SEARCH
+async function silentSearch(query){
+ if(cache[query]) return cache[query];
+ try{
+   let res=await fetch("https://en.wikipedia.org/api/rest_v1/page/summary/"+encodeURIComponent(query));
+   if(!res.ok) throw "not found";
+   let data=await res.json();
+   let result=`<b>${data.title}</b><br>${data.extract}`;
+   cache[query]=result; saveCache();
+   return result;
+ }catch{return lang=="en"?"No reliable info found":"Nta makuru yizewe.";}
+}
+function save(){localStorage.setItem("heroes",JSON.stringify(heroes));}
+function saveCache(){localStorage.setItem("cache",JSON.stringify(cache));}
+
+// LANGUAGE TOGGLE
+function toggleLang(){lang=lang=="en"?"rw":"en"; alert(lang=="en"?"English":"Kinyarwanda");}
+
+// ADMIN
+function adminLogin(){let e=prompt("Admin email:"); if(e==="manzipros@gmail.com"){admin=true;document.getElementById("admin").style.display="block";}else alert("Access denied");}
+function previewImg(e){document.getElementById("imgPreview").src=URL.createObjectURL(e.target.files[0]);}
+function saveHero(){let r=new FileReader(); r.onload=()=>{heroes.push({name_en:hen.value,name_rw:hrw.value,en:sen.value,rw:srw.value,img:r.result,values:[hen.value.toLowerCase()]}); save(); alert("Hero added");}; r.readAsDataURL(img.files[0]);}
+
+// QUIZ
+function showQuiz(){document.getElementById("quiz").style.display="block";document.getElementById("quizQ").innerText="Who promoted unity in Rwanda?";}
+function checkQ(){let ans=document.getElementById("quizAns").value.toLowerCase(); if(ans.includes("kagame")){alert("Correct!"); quizScore++;} else alert("Try again"); document.getElementById("quizScore").innerText=quizScore;}
+</script>
+</body>
+</html>
